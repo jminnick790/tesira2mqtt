@@ -1,0 +1,221 @@
+tesira:
+  host: "192.168.1.100"          # TODO: replace with Tesira IP
+  port: 23
+  username: "default"
+  password: "default"
+  reconnect_interval_s: 5
+  subscription_min_rate_ms: 100
+
+mqtt:
+  host: "192.168.1.50"           # TODO: replace with Mosquitto IP
+  port: 1883
+  username: ""
+  password: ""
+  discovery_prefix: "homeassistant"
+  device_name: "Biamp Tesira"
+  device_id: "tesira_main"
+
+# ── SOURCES ──────────────────────────────────────────────────────────────────
+# Logical input names. Channel assignments live in routing blocks below.
+# The same source can appear in multiple routing entries (feeds multiple zones).
+sources:
+  - id: sonos_port
+    name: "Sonos Port"
+  - id: fpp
+    name: "FPP"
+  - id: dry_lines_in
+    name: "Dry Lines"
+
+# ── ZONES ────────────────────────────────────────────────────────────────────
+# Each zone is a stereo output pair with independent level and mute.
+# level_channel / mute_channel: 0 = ganged (moves L+R together).
+# Confirm ganged vs per-channel against hardware before deploying.
+zones:
+  - id: zone_01
+    name: "Zone 01"              # TODO: rename (e.g. "Living Room")
+    stereo: true
+    level_instance: "TODO_Zone01Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone01Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_02
+    name: "Zone 02"              # TODO: rename
+    stereo: true
+    level_instance: "TODO_Zone02Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone02Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_03
+    name: "Zone 03"
+    stereo: true
+    level_instance: "TODO_Zone03Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone03Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_04
+    name: "Zone 04"
+    stereo: true
+    level_instance: "TODO_Zone04Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone04Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_05
+    name: "Zone 05"
+    stereo: true
+    level_instance: "TODO_Zone05Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone05Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_06
+    name: "Zone 06"
+    stereo: true
+    level_instance: "TODO_Zone06Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone06Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_07
+    name: "Zone 07"
+    stereo: true
+    level_instance: "TODO_Zone07Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone07Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+  - id: zone_08
+    name: "Zone 08"
+    stereo: true
+    level_instance: "TODO_Zone08Fader"
+    level_channel: 0
+    mute_instance: "TODO_Zone08Mute"
+    mute_channel: 0
+    min_db: -100.0
+    max_db: 12.0
+
+# ── ROUTING ──────────────────────────────────────────────────────────────────
+# Each routing block creates a source-selector (select entity) in HA.
+# output_channels and input_channels are parallel lists: [L, R].
+# Channel numbers below assume sequential card layout — verify against hardware.
+routing:
+  - id: zone_01_source
+    name: "Zone 01 Source"
+    zone_id: zone_01
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [1, 2]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_02_source
+    name: "Zone 02 Source"
+    zone_id: zone_02
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [3, 4]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_03_source
+    name: "Zone 03 Source"
+    zone_id: zone_03
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [5, 6]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_04_source
+    name: "Zone 04 Source"
+    zone_id: zone_04
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [7, 8]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_05_source
+    name: "Zone 05 Source"
+    zone_id: zone_05
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [9, 10]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_06_source
+    name: "Zone 06 Source"
+    zone_id: zone_06
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [11, 12]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_07_source
+    name: "Zone 07 Source"
+    zone_id: zone_07
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [13, 14]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]
+
+  - id: zone_08_source
+    name: "Zone 08 Source"
+    zone_id: zone_08
+    matrix_instance: "TODO_MainRouter"
+    output_channels: [15, 16]
+    sources:
+      - source_id: sonos_port
+        input_channels: [1, 2]
+      - source_id: fpp
+        input_channels: [3, 4]
+      - source_id: dry_lines_in
+        input_channels: [5, 6]

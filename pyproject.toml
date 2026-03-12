@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tesira-bridge"
+version = "0.1.0"
+description = "MQTT bridge between Biamp Tesira Server I/O and Home Assistant"
+requires-python = ">=3.12"
+dependencies = [
+    "aiomqtt>=2.3",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+tesira-bridge = "tesira_bridge.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "anyio>=4.4",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tesira_bridge"]

@@ -1,0 +1,14 @@
+services:
+  tesira-bridge:
+    build: .
+    image: tesira-bridge:latest
+    container_name: tesira-bridge
+    restart: unless-stopped
+    volumes:
+      - ./config:/config:ro      # mount your config.yaml here (read-only)
+    environment:
+      - CONFIG_PATH=/config/config.yaml
+      - LOG_LEVEL=INFO           # DEBUG for verbose TTP tracing
+    network_mode: host           # simplest for LAN devices; or use bridge + host.docker.internal
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"   # optional: auto-update via Watchtower
