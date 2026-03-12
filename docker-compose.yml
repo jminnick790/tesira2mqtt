@@ -10,20 +10,20 @@ services:
       # ── Config path ──────────────────────────────────────────────────────────
       - CONFIG_PATH=/config/config.yaml
 
-      # ── Logging ──────────────────────────────────────────────────────────────
-      - LOG_LEVEL=INFO             # use DEBUG to trace raw TTP send/recv lines
+      # ── Logging — value loaded from .env (DEBUG for raw TTP tracing) ──────────
+      - LOG_LEVEL
 
-      # ── Tesira connection (override config.yaml values) ───────────────────────
-      - TESIRA_HOST=192.168.1.100  # required if not set in config.yaml
-      #- TESIRA_PORT=23
-      #- TESIRA_USERNAME=default
-      #- TESIRA_PASSWORD=default
+      # ── Tesira connection — values loaded from .env ───────────────────────────
+      - TESIRA_HOST
+      #- TESIRA_PORT
+      #- TESIRA_USERNAME
+      #- TESIRA_PASSWORD
 
-      # ── MQTT broker (override config.yaml values) ─────────────────────────────
-      - MQTT_HOST=192.168.1.50     # required if not set in config.yaml
-      #- MQTT_PORT=1883
-      #- MQTT_USERNAME=
-      #- MQTT_PASSWORD=
+      # ── MQTT broker — values loaded from .env ────────────────────────────────
+      - MQTT_HOST
+      #- MQTT_PORT
+      - MQTT_USERNAME
+      - MQTT_PASSWORD
 
     network_mode: host             # simplest for LAN devices on a private network
                                    # avoids needing extra_hosts for Tesira/MQTT discovery

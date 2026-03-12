@@ -150,37 +150,57 @@ class TesiraClient:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _authenticate(self) -> None:
-        """Drain the welcome banner and send credentials."""
-        assert self._reader is not None
-        # Drain until we see the username prompt
-        while True:
-            line = await self._reader.readline()
-            decoded = line.decode(errors="replace").strip()
-            logger.debug("< %s", decoded)
-            if "login" in decoded.lower() or decoded == "":
-                break
+        """Drain the Tesira banner and exchange credentials.
 
+        Uses read() with a timeout rather than readline() because Telnet
+        prompts like 'login: ' and 'Password: ' don't end with a newline,
+        which would cause readline() to block indefinitely.
+        """
+        assert self._reader is not None
+
+        await self._read_until("login", timeout=10.0)
+        logger.debug("> %s", self.username)
         self._writer.write((self.username + "\n").encode())
         await self._writer.drain()
 
-        # Drain until password prompt
-        while True:
-            line = await self._reader.readline()
-            decoded = line.decode(errors="replace").strip()
-            logger.debug("< %s", decoded)
-            if "password" in decoded.lower() or decoded == "":
-                break
-
+        await self._read_until("password", timeout=10.0)
+        logger.debug("> ****")
         self._writer.write((self.password + "\n").encode())
         await self._writer.drain()
 
-        # Drain until welcome / ready line
+        # Tesira confirms successful login with a welcome message or a bare
+        # '+OK'. Either signals the session is ready.
+        await self._read_until_any(["welcome", "+OK"], timeout=10.0)
+
+    async def _read_until(self, expected: str, timeout: float = 10.0) -> str:
+        """Read chunks until the accumulated buffer contains `expected` (case-insensitive)."""
+        return await self._read_until_any([expected], timeout=timeout)
+
+    async def _read_until_any(self, candidates: list[str], timeout: float = 10.0) -> str:
+        """Read chunks until the buffer contains any of the candidate strings."""
+        assert self._reader is not None
+        buf = ""
+        deadline = asyncio.get_event_loop().time() + timeout
         while True:
-            line = await self._reader.readline()
-            decoded = line.decode(errors="replace").strip()
-            logger.debug("< %s", decoded)
-            if "welcome" in decoded.lower() or "+OK" in decoded:
-                break
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError(
+                    f"Timeout waiting for {candidates!r} during auth. "
+                    f"Received so far: {buf!r}"
+                )
+            try:
+                chunk = await asyncio.wait_for(
+                    self._reader.read(4096), timeout=min(remaining, 1.0)
+                )
+            except asyncio.TimeoutError:
+                continue
+            if not chunk:
+                raise ConnectionError("Connection closed during authentication")
+            decoded = chunk.decode(errors="replace")
+            logger.debug("< %r", decoded)
+            buf += decoded
+            if any(c.lower() in buf.lower() for c in candidates):
+                return buf
 
     async def _recv_loop(self) -> None:
         """Read lines from Tesira and route to response queue or subscription callbacks."""
