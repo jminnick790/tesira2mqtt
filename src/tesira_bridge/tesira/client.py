@@ -147,18 +147,95 @@ class TesiraClient:
     def unregister_callback(self, publish_token: str) -> None:
         self._callbacks.pop(publish_token, None)
 
+    # ── Telnet IAC negotiation ────────────────────────────────────────────────
+
+    # Telnet command bytes
+    _IAC  = 0xFF
+    _DONT = 0xFE
+    _DO   = 0xFD
+    _WONT = 0xFC
+    _WILL = 0xFB
+    _SB   = 0xFA  # subnegotiation begin
+    _SE   = 0xF0  # subnegotiation end
+
+    async def _strip_iac(self, data: bytes) -> str:
+        """Strip Telnet IAC sequences from raw bytes, responding WONT/DONT to all
+        DO/WILL option requests so the Tesira proceeds past negotiation to the
+        login prompt.
+
+        Returns the printable text content with all IAC sequences removed.
+        """
+        i = 0
+        text = bytearray()
+        response = bytearray()
+
+        while i < len(data):
+            b = data[i]
+            if b != self._IAC:
+                text.append(b)
+                i += 1
+                continue
+
+            # Need at least one more byte for the command
+            if i + 1 >= len(data):
+                break
+
+            cmd = data[i + 1]
+
+            if cmd == self._IAC:
+                # Escaped 0xFF — literal byte in stream
+                text.append(self._IAC)
+                i += 2
+
+            elif cmd in (self._DO, self._WILL):
+                # Server asking us to DO or announcing it WILL do something —
+                # refuse both; we don't need any Telnet options.
+                if i + 2 < len(data):
+                    opt = data[i + 2]
+                    reply = self._WONT if cmd == self._DO else self._DONT
+                    response.extend([self._IAC, reply, opt])
+                    logger.debug("IAC %s %d → replying %s",
+                                 "DO" if cmd == self._DO else "WILL", opt,
+                                 "WONT" if reply == self._WONT else "DONT")
+                    i += 3
+                else:
+                    break  # incomplete sequence — stop here
+
+            elif cmd in (self._DONT, self._WONT):
+                # Server acknowledging our refusal — no reply needed
+                i += 3
+
+            elif cmd == self._SB:
+                # Subnegotiation block — skip everything until SE
+                i += 2
+                while i < len(data) and data[i] != self._SE:
+                    i += 1
+                i += 1  # skip SE itself
+
+            else:
+                # Unknown 2-byte command
+                i += 2
+
+        if response and self._writer:
+            self._writer.write(bytes(response))
+            await self._writer.drain()
+
+        return text.decode(errors="replace")
+
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _authenticate(self) -> None:
         """Drain the Tesira banner and exchange credentials.
 
-        Uses read() with a timeout rather than readline() because Telnet
-        prompts like 'login: ' and 'Password: ' don't end with a newline,
-        which would cause readline() to block indefinitely.
+        The Tesira Telnet server opens with IAC option negotiations before
+        sending the login prompt. We respond WONT/DONT to all options, which
+        causes the Tesira to proceed to 'login: '.
+
+        Default credentials (unprotected systems): default / default.
         """
         assert self._reader is not None
 
-        await self._read_until("login", timeout=10.0)
+        await self._read_until("login", timeout=15.0)
         logger.debug("> %s", self.username)
         self._writer.write((self.username + "\n").encode())
         await self._writer.drain()
@@ -168,16 +245,16 @@ class TesiraClient:
         self._writer.write((self.password + "\n").encode())
         await self._writer.drain()
 
-        # Tesira confirms successful login with a welcome message or a bare
-        # '+OK'. Either signals the session is ready.
-        await self._read_until_any(["welcome", "+OK"], timeout=10.0)
+        # Tesira confirms successful login with a welcome banner.
+        await self._read_until_any(["welcome", "server", "+OK"], timeout=10.0)
 
     async def _read_until(self, expected: str, timeout: float = 10.0) -> str:
-        """Read chunks until the accumulated buffer contains `expected` (case-insensitive)."""
+        """Read chunks until the accumulated text buffer contains `expected`."""
         return await self._read_until_any([expected], timeout=timeout)
 
     async def _read_until_any(self, candidates: list[str], timeout: float = 10.0) -> str:
-        """Read chunks until the buffer contains any of the candidate strings."""
+        """Read raw chunks, strip IAC sequences, accumulate text until any
+        candidate string appears (case-insensitive)."""
         assert self._reader is not None
         buf = ""
         deadline = asyncio.get_event_loop().time() + timeout
@@ -189,16 +266,17 @@ class TesiraClient:
                     f"Received so far: {buf!r}"
                 )
             try:
-                chunk = await asyncio.wait_for(
+                raw = await asyncio.wait_for(
                     self._reader.read(4096), timeout=min(remaining, 1.0)
                 )
             except asyncio.TimeoutError:
                 continue
-            if not chunk:
+            if not raw:
                 raise ConnectionError("Connection closed during authentication")
-            decoded = chunk.decode(errors="replace")
-            logger.debug("< %r", decoded)
-            buf += decoded
+            text = await self._strip_iac(raw)
+            if text:
+                logger.debug("< %r", text)
+            buf += text
             if any(c.lower() in buf.lower() for c in candidates):
                 return buf
 
