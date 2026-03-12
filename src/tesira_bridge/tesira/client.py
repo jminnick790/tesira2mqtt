@@ -15,10 +15,14 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from .protocol import parse_notification
+
 logger = logging.getLogger(__name__)
 
 # Type alias for subscription callbacks
 NotificationCallback = Callable[[str, str], Coroutine[Any, Any, None]]
+# Type alias for on-connect hooks (called after each successful auth)
+ConnectHook = Callable[[], Coroutine[Any, Any, None]]
 
 
 class TesiraClient:
@@ -50,21 +54,34 @@ class TesiraClient:
         self._writer: asyncio.StreamWriter | None = None
         self._response_queue: asyncio.Queue[str] = asyncio.Queue()
         self._callbacks: dict[str, NotificationCallback] = {}
+        self._on_connect_hooks: list[ConnectHook] = []
         self._running = False
         self._recv_task: asyncio.Task | None = None
+        self.connected = False
 
     # ── Connection lifecycle ──────────────────────────────────────────────────
 
+    def add_connect_hook(self, hook: ConnectHook) -> None:
+        """Register a coroutine to call after each successful authentication.
+
+        Use this to re-subscribe to attributes after a reconnect.
+        """
+        self._on_connect_hooks.append(hook)
+
     async def connect(self) -> None:
-        """Open connection and authenticate. Raises on failure."""
+        """Open connection, authenticate, and fire on-connect hooks."""
         logger.info("Connecting to Tesira at %s:%s", self.host, self.port)
         self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
         await self._authenticate()
         self._recv_task = asyncio.create_task(self._recv_loop(), name="tesira-recv")
+        self.connected = True
         logger.info("Connected and authenticated")
+        for hook in self._on_connect_hooks:
+            await hook()
 
     async def disconnect(self) -> None:
         """Gracefully close the connection."""
+        self.connected = False
         self._running = False
         if self._recv_task:
             self._recv_task.cancel()
@@ -189,24 +206,13 @@ class TesiraClient:
             logger.error("Recv loop error: %s", exc)
 
     async def _dispatch_notification(self, line: str) -> None:
-        """Parse a subscription notification and invoke the registered callback.
-
-        Notification format:
-            ! "publishToken":"<token>" "value":<value>
-        """
-        # TODO: replace with a proper parser in protocol.py
-        try:
-            token_start = line.index('"publishToken":"') + len('"publishToken":"')
-            token_end = line.index('"', token_start)
-            token = line[token_start:token_end]
-
-            value_start = line.index('"value":') + len('"value":')
-            value = line[value_start:].rstrip()
-
-            callback = self._callbacks.get(token)
-            if callback:
-                await callback(token, value)
-            else:
-                logger.debug("No callback for publishToken '%s'", token)
-        except (ValueError, KeyError) as exc:
-            logger.warning("Failed to parse notification '%s': %s", line, exc)
+        """Parse a subscription notification and invoke the registered callback."""
+        notification = parse_notification(line)
+        if notification is None:
+            logger.warning("Failed to parse notification: %s", line)
+            return
+        callback = self._callbacks.get(notification.publish_token)
+        if callback:
+            await callback(notification.publish_token, notification.value)
+        else:
+            logger.debug("No callback for publishToken '%s'", notification.publish_token)

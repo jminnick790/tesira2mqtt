@@ -1,10 +1,11 @@
 """Coordinator — glues the TTP client and MQTT bridge together.
 
 Responsibilities:
-- Subscribe to Tesira attributes on startup; re-subscribe after reconnect
+- Subscribe to Tesira attributes on connect (and re-subscribe after reconnect)
 - Translate TTP callbacks → MQTT state publishes
 - Translate MQTT commands → TTP commands
-- Track current state (ZoneState, RoutingState) for routing logic
+- Sync routing state from hardware on startup by querying crosspoints
+- Track current ZoneState and RoutingState
 """
 
 from __future__ import annotations
@@ -15,9 +16,8 @@ from ..config import BridgeConfig, RoutingConfig, ZoneConfig
 from ..tesira.client import TesiraClient
 from ..tesira.models import RoutingState, ZoneState
 from ..tesira.protocol import (
+    ValueResponse,
     cmd_get_crosspoint_mute,
-    cmd_get_level,
-    cmd_get_mute,
     cmd_set_crosspoint_mute,
     cmd_set_level,
     cmd_set_mute,
@@ -25,6 +25,7 @@ from ..tesira.protocol import (
     cmd_subscribe_mute,
     parse_bool,
     parse_float,
+    parse_response,
 )
 from .mqtt import MqttBridge
 
@@ -48,15 +49,32 @@ class Coordinator:
         self._source_name_to_id = {s.name: s.id for s in cfg.sources}
         self._source_id_to_name = {s.id: s.name for s in cfg.sources}
 
-    # ── Setup ─────────────────────────────────────────────────────────────────
+        # Register as a connect hook so we re-subscribe after every reconnect
+        tesira.add_connect_hook(self._on_connect)
 
-    async def setup(self) -> None:
-        """Subscribe to all Tesira attributes and register MQTT command handlers."""
+    # ── Connect hook (runs after every successful TTP auth) ───────────────────
+
+    async def _on_connect(self) -> None:
+        """Called by TesiraClient after each successful authentication.
+
+        Re-subscribes to all attributes and syncs routing state from hardware.
+        TTP subscriptions are lost on Tesira reboot/reconnect so this must
+        run every time, not just on first connect.
+        """
+        logger.info("Running coordinator setup after (re)connect")
         for zone in self._cfg.zones:
             await self._subscribe_zone(zone)
         await self._register_mqtt_handlers()
+        await self._sync_routing_state()
+
+    # ── Subscription setup ────────────────────────────────────────────────────
 
     async def _subscribe_zone(self, zone: ZoneConfig) -> None:
+        """Subscribe to level and mute for a zone.
+
+        The Tesira immediately pushes the current value as the first notification,
+        so HA entities will reflect real hardware state within one round-trip.
+        """
         rate = self._cfg.tesira.subscription_min_rate_ms
         level_token = f"{zone.id}_level"
         mute_token = f"{zone.id}_mute"
@@ -68,20 +86,68 @@ class Coordinator:
             cmd_subscribe_level(zone.level_instance, zone.level_channel, level_token, rate)
         )
         await self._tesira.send(
-            cmd_subscribe_mute(zone.mute_instance, zone.mute_channel, mute_token, rate)
+            cmd_subscribe_mute(zone.effective_mute_instance, zone.effective_mute_channel, mute_token, rate)
         )
-        logger.info("Subscribed to zone %s", zone.id)
+        logger.debug("Subscribed to zone %s", zone.id)
 
     async def _register_mqtt_handlers(self) -> None:
+        """Register MQTT command topic handlers (idempotent — safe to call on reconnect)."""
         for zone in self._cfg.zones:
-            level_topic = f"tesira/zone/{zone.id}/level/set"
-            mute_topic = f"tesira/zone/{zone.id}/mute/set"
-            self._mqtt.register_command_handler(level_topic, self._handle_level_command)
-            self._mqtt.register_command_handler(mute_topic, self._handle_mute_command)
-
+            self._mqtt.register_command_handler(
+                f"tesira/zone/{zone.id}/level/set", self._handle_level_command
+            )
+            self._mqtt.register_command_handler(
+                f"tesira/zone/{zone.id}/mute/set", self._handle_mute_command
+            )
         for route in self._cfg.routing:
-            source_topic = f"tesira/routing/{route.id}/set"
-            self._mqtt.register_command_handler(source_topic, self._handle_routing_command)
+            self._mqtt.register_command_handler(
+                f"tesira/routing/{route.id}/set", self._handle_routing_command
+            )
+
+    # ── Startup state sync ────────────────────────────────────────────────────
+
+    async def _sync_routing_state(self) -> None:
+        """Query crosspoint mute state from Tesira to determine the active source
+        for each routing block and publish to MQTT.
+
+        For each routing block, the active source is the one whose input channels
+        are all unmuted on their paired output channels. If zero or multiple sources
+        are fully unmuted the state is published as 'Unknown'.
+        """
+        for route in self._cfg.routing:
+            active_id = await self._detect_active_source(route)
+            self._routing_states[route.id].active_source_id = active_id
+            if active_id:
+                name = self._source_id_to_name.get(active_id, active_id)
+                logger.info("Route '%s': active source is '%s'", route.id, name)
+            else:
+                name = "Unknown"
+                logger.info("Route '%s': active source could not be determined", route.id)
+            await self._mqtt.publish(f"tesira/routing/{route.id}/state", name)
+
+    async def _detect_active_source(self, route: RoutingConfig) -> str | None:
+        """Return the source_id whose crosspoints are all unmuted, or None."""
+        active_ids: list[str] = []
+        for entry in route.sources:
+            all_unmuted = True
+            for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
+                raw = await self._tesira.send(
+                    cmd_get_crosspoint_mute(route.matrix_instance, in_ch, out_ch)
+                )
+                resp = parse_response(raw)
+                if isinstance(resp, ValueResponse):
+                    if parse_bool(resp.value):   # muted=True means this crosspoint is off
+                        all_unmuted = False
+                        break
+                else:
+                    all_unmuted = False
+                    break
+            if all_unmuted:
+                active_ids.append(entry.source_id)
+
+        if len(active_ids) == 1:
+            return active_ids[0]
+        return None   # 0 = nothing active / all muted; >1 = ambiguous matrix state
 
     # ── TTP → MQTT callbacks ──────────────────────────────────────────────────
 
@@ -99,12 +165,13 @@ class Coordinator:
         zone_id = token.removesuffix("_mute")
         muted = parse_bool(value)
         self._zone_states[zone_id].muted = muted
-        await self._mqtt.publish(f"tesira/zone/{zone_id}/mute/state", "ON" if muted else "OFF")
+        await self._mqtt.publish(
+            f"tesira/zone/{zone_id}/mute/state", "ON" if muted else "OFF"
+        )
 
     # ── MQTT → TTP handlers ───────────────────────────────────────────────────
 
     async def _handle_level_command(self, topic: str, payload: str) -> None:
-        # topic: tesira/zone/<zone_id>/level/set
         zone_id = topic.split("/")[2]
         zone = next((z for z in self._cfg.zones if z.id == zone_id), None)
         if not zone:
@@ -124,22 +191,18 @@ class Coordinator:
             logger.warning("Mute command for unknown zone '%s'", zone_id)
             return
         muted = payload.upper() == "ON"
-        await self._tesira.send(cmd_set_mute(zone.mute_instance, zone.mute_channel, muted))
+        await self._tesira.send(cmd_set_mute(zone.effective_mute_instance, zone.effective_mute_channel, muted))
 
     async def _handle_routing_command(self, topic: str, payload: str) -> None:
-        # topic: tesira/routing/<routing_id>/set
-        # payload: source name (human-readable, as shown in HA select)
         routing_id = topic.split("/")[2]
         route = next((r for r in self._cfg.routing if r.id == routing_id), None)
         if not route:
             logger.warning("Routing command for unknown route '%s'", routing_id)
             return
-
         source_id = self._source_name_to_id.get(payload)
         if not source_id:
             logger.warning("Unknown source name '%s' for route %s", payload, routing_id)
             return
-
         await self._switch_source(route, source_id)
 
     async def _switch_source(self, route: RoutingConfig, target_source_id: str) -> None:
@@ -167,4 +230,4 @@ class Coordinator:
         self._routing_states[route.id].active_source_id = target_source_id
         source_name = self._source_id_to_name.get(target_source_id, target_source_id)
         await self._mqtt.publish(f"tesira/routing/{route.id}/state", source_name)
-        logger.info("Route '%s' switched to source '%s'", route.id, target_source_id)
+        logger.info("Route '%s' switched to '%s'", route.id, target_source_id)

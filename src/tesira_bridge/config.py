@@ -1,9 +1,25 @@
-"""Configuration models and loader for tesira-bridge."""
+"""Configuration models and loader for tesira-bridge.
+
+Environment variables override the corresponding config.yaml values:
+
+  TESIRA_HOST        Tesira IP address
+  TESIRA_PORT        Tesira Telnet port        (default: 23)
+  TESIRA_USERNAME    Tesira login username     (default: default)
+  TESIRA_PASSWORD    Tesira login password     (default: default)
+
+  MQTT_HOST          MQTT broker IP address
+  MQTT_PORT          MQTT broker port          (default: 1883)
+  MQTT_USERNAME      MQTT broker username      (default: empty)
+  MQTT_PASSWORD      MQTT broker password      (default: empty)
+
+  CONFIG_PATH        Path to config.yaml       (default: config/config.yaml)
+  LOG_LEVEL          Logging level             (default: INFO)
+"""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Annotated
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -43,10 +59,21 @@ class ZoneConfig(BaseModel):
     stereo: bool = True
     level_instance: str
     level_channel: int = 0
-    mute_instance: str
-    mute_channel: int = 0
+    # mute_instance is optional — defaults to level_instance when not set.
+    # Tesira Level control blocks expose both 'level' and 'mute' attributes,
+    # so a separate mute block is only needed if your design uses one.
+    mute_instance: str | None = None
+    mute_channel: int | None = None
     min_db: float = -100.0
     max_db: float = 12.0
+
+    @property
+    def effective_mute_instance(self) -> str:
+        return self.mute_instance or self.level_instance
+
+    @property
+    def effective_mute_channel(self) -> int:
+        return self.mute_channel if self.mute_channel is not None else self.level_channel
 
 
 class RoutingSourceEntry(BaseModel):
@@ -108,14 +135,57 @@ class BridgeConfig(BaseModel):
         return self
 
 
-def load_config(path: Path | str = "config/config.yaml") -> BridgeConfig:
-    """Load and validate config.yaml, raising clear errors on misconfiguration."""
-    config_path = Path(path)
+def _apply_env_overrides(raw: dict) -> dict:
+    """Override connection settings with environment variables when set.
+
+    Structural config (zones, sources, routing) always comes from the YAML file.
+    Connection details can be set or overridden via env vars, which makes it
+    easy to inject secrets into Docker containers without editing the config file.
+    """
+    _str_override(raw, ["tesira", "host"],     "TESIRA_HOST")
+    _int_override(raw, ["tesira", "port"],     "TESIRA_PORT")
+    _str_override(raw, ["tesira", "username"], "TESIRA_USERNAME")
+    _str_override(raw, ["tesira", "password"], "TESIRA_PASSWORD")
+
+    _str_override(raw, ["mqtt", "host"],     "MQTT_HOST")
+    _int_override(raw, ["mqtt", "port"],     "MQTT_PORT")
+    _str_override(raw, ["mqtt", "username"], "MQTT_USERNAME")
+    _str_override(raw, ["mqtt", "password"], "MQTT_PASSWORD")
+
+    return raw
+
+
+def _str_override(data: dict, path: list[str], env_var: str) -> None:
+    value = os.environ.get(env_var)
+    if value is not None:
+        node = data
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = value
+
+
+def _int_override(data: dict, path: list[str], env_var: str) -> None:
+    value = os.environ.get(env_var)
+    if value is not None:
+        node = data
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = int(value)
+
+
+def load_config(path: Path | str | None = None) -> BridgeConfig:
+    """Load and validate config, applying env var overrides.
+
+    Path defaults to CONFIG_PATH env var, then 'config/config.yaml'.
+    """
+    config_path = Path(path or os.environ.get("CONFIG_PATH", "config/config.yaml"))
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config file not found: {config_path}\n"
-            f"Copy config/config.yaml.example to config/config.yaml and fill in your values."
+            "Copy config/config.yaml.example to config/config.yaml and fill in your values.\n"
+            "Or set CONFIG_PATH to point to your config file."
         )
     with config_path.open() as f:
-        raw = yaml.safe_load(f)
+        raw = yaml.safe_load(f) or {}
+    raw = _apply_env_overrides(raw)
     return BridgeConfig.model_validate(raw)

@@ -5,10 +5,27 @@ services:
     container_name: tesira-bridge
     restart: unless-stopped
     volumes:
-      - ./config:/config:ro      # mount your config.yaml here (read-only)
+      - ./config:/config:ro        # config.yaml lives here (read-only inside container)
     environment:
+      # ── Config path ──────────────────────────────────────────────────────────
       - CONFIG_PATH=/config/config.yaml
-      - LOG_LEVEL=INFO           # DEBUG for verbose TTP tracing
-    network_mode: host           # simplest for LAN devices; or use bridge + host.docker.internal
+
+      # ── Logging ──────────────────────────────────────────────────────────────
+      - LOG_LEVEL=INFO             # use DEBUG to trace raw TTP send/recv lines
+
+      # ── Tesira connection (override config.yaml values) ───────────────────────
+      - TESIRA_HOST=192.168.1.100  # required if not set in config.yaml
+      #- TESIRA_PORT=23
+      #- TESIRA_USERNAME=default
+      #- TESIRA_PASSWORD=default
+
+      # ── MQTT broker (override config.yaml values) ─────────────────────────────
+      - MQTT_HOST=192.168.1.50     # required if not set in config.yaml
+      #- MQTT_PORT=1883
+      #- MQTT_USERNAME=
+      #- MQTT_PASSWORD=
+
+    network_mode: host             # simplest for LAN devices on a private network
+                                   # avoids needing extra_hosts for Tesira/MQTT discovery
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"   # optional: auto-update via Watchtower
+      - "com.centurylinklabs.watchtower.enable=true"   # optional: Watchtower auto-update
