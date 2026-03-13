@@ -105,12 +105,13 @@ def cmd_subscribe_mute(instance: str, channel: int, token: str, min_rate_ms: int
     return f"{instance} subscribe mute {channel} {token} {min_rate_ms}"
 
 
-def cmd_set_crosspoint_mute(instance: str, input_ch: int, output_ch: int, muted: bool) -> str:
-    return f"{instance} set crosspointMute {input_ch} {output_ch} {'true' if muted else 'false'}"
+def cmd_set_crosspoint_level(instance: str, input_ch: int, output_ch: int, db: float) -> str:
+    """Set a matrix crosspoint level. Use 0.0 dB to enable, -100.0 dB to disable."""
+    return f"{instance} set crosspointLevel {input_ch} {output_ch} {db:.4f}"
 
 
-def cmd_get_crosspoint_mute(instance: str, input_ch: int, output_ch: int) -> str:
-    return f"{instance} get crosspointMute {input_ch} {output_ch}"
+def cmd_get_crosspoint_level(instance: str, input_ch: int, output_ch: int) -> str:
+    return f"{instance} get crosspointLevel {input_ch} {output_ch}"
 
 
 # ── Value coercions ───────────────────────────────────────────────────────────
