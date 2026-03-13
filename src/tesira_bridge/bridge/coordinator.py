@@ -177,7 +177,7 @@ class Coordinator:
             else:
                 name = "None"
                 logger.info("Route '%s': no single active source — publishing 'None'", route.id)
-            await self._mqtt.publish(f"tesira/routing/{route.id}/state", name)
+            await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", name)
 
     async def _detect_active_source(self, route: RoutingConfig) -> str | None:
         """Return the source_id whose crosspoints are all enabled, or None.
@@ -269,14 +269,24 @@ class Coordinator:
         await self._switch_source(route, source_id)
 
     async def _disable_all_crosspoints(self, route: RoutingConfig) -> None:
-        """Disable every crosspoint for this route — equivalent to selecting 'None'."""
+        """Disable every crosspoint for this route — equivalent to selecting 'None'.
+
+        TTP errors on individual crosspoints are logged but do not abort the
+        function — the state is always published so HA reflects the intent.
+        """
         for entry in route.sources:
             for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
-                await self._tesira.send(
-                    cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
-                )
+                try:
+                    await self._tesira.send(
+                        cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
+                    )
+                except RuntimeError as exc:
+                    logger.warning(
+                        "Route '%s': failed to disable crosspoint %d→%d: %s",
+                        route.id, in_ch, out_ch, exc,
+                    )
         self._routing_states[route.id].active_source_id = None
-        await self._mqtt.publish(f"tesira/routing/{route.id}/state", "None")
+        await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", "None")
         logger.info("Route '%s' set to None (all crosspoints disabled)", route.id)
 
     async def _switch_source(self, route: RoutingConfig, target_source_id: str) -> None:
@@ -291,17 +301,29 @@ class Coordinator:
         # Disable all crosspoints for this route's outputs
         for entry in route.sources:
             for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
-                await self._tesira.send(
-                    cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
-                )
+                try:
+                    await self._tesira.send(
+                        cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
+                    )
+                except RuntimeError as exc:
+                    logger.warning(
+                        "Route '%s': failed to disable crosspoint %d→%d: %s",
+                        route.id, in_ch, out_ch, exc,
+                    )
 
         # Enable only the target source's crosspoints
         for in_ch, out_ch in zip(target_entry.input_channels, route.output_channels):
-            await self._tesira.send(
-                cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, True)
-            )
+            try:
+                await self._tesira.send(
+                    cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, True)
+                )
+            except RuntimeError as exc:
+                logger.warning(
+                    "Route '%s': failed to enable crosspoint %d→%d: %s",
+                    route.id, in_ch, out_ch, exc,
+                )
 
         self._routing_states[route.id].active_source_id = target_source_id
         source_name = self._source_id_to_name.get(target_source_id, target_source_id)
-        await self._mqtt.publish(f"tesira/routing/{route.id}/state", source_name)
+        await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", source_name)
         logger.info("Route '%s' switched to '%s'", route.id, target_source_id)
