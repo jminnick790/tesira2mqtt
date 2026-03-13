@@ -225,28 +225,32 @@ class TesiraClient:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _authenticate(self) -> None:
-        """Drain the Tesira banner and exchange credentials.
+        """Drain the Tesira banner and optionally exchange credentials.
 
-        The Tesira Telnet server opens with IAC option negotiations before
-        sending the login prompt. We respond WONT/DONT to all options, which
-        causes the Tesira to proceed to 'login: '.
+        After IAC negotiation the Tesira either:
+        - Shows a 'login:' prompt  → credentials required (security enabled)
+        - Shows the welcome banner → no auth configured, session ready immediately
 
-        Default credentials (unprotected systems): default / default.
+        Both cases are handled by waiting for whichever arrives first.
         """
         assert self._reader is not None
 
-        await self._read_until("login", timeout=15.0)
-        logger.debug("> %s", self.username)
-        self._writer.write((self.username + "\n").encode())
-        await self._writer.drain()
+        buf = await self._read_until_any(["login", "welcome", "server"], timeout=15.0)
 
-        await self._read_until("password", timeout=10.0)
-        logger.debug("> ****")
-        self._writer.write((self.password + "\n").encode())
-        await self._writer.drain()
+        if "login" in buf.lower():
+            logger.debug("> %s", self.username)
+            self._writer.write((self.username + "\n").encode())
+            await self._writer.drain()
 
-        # Tesira confirms successful login with a welcome banner.
-        await self._read_until_any(["welcome", "server", "+OK"], timeout=10.0)
+            await self._read_until("password", timeout=10.0)
+            logger.debug("> ****")
+            self._writer.write((self.password + "\n").encode())
+            await self._writer.drain()
+
+            await self._read_until_any(["welcome", "server", "+OK"], timeout=10.0)
+            logger.debug("Authenticated with credentials")
+        else:
+            logger.debug("No login prompt — Tesira has no auth configured, session ready")
 
     async def _read_until(self, expected: str, timeout: float = 10.0) -> str:
         """Read chunks until the accumulated text buffer contains `expected`."""
