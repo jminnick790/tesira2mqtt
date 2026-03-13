@@ -123,17 +123,28 @@ class TesiraClient:
 
     # ── Command / response ────────────────────────────────────────────────────
 
+    _RESPONSE_TIMEOUT = 5.0  # seconds to wait for a TTP response before giving up
+
     async def send(self, command: str) -> str:
         """Send a TTP command and await its response line.
 
         Returns the raw response string (e.g. '+OK', '+OK "value":-20.0').
-        Raises RuntimeError if the Tesira returns a '-ERR' response.
+        Raises RuntimeError if the Tesira returns a '-ERR' response or if no
+        response arrives within _RESPONSE_TIMEOUT seconds.
         """
         if self._writer is None:
             raise RuntimeError("Not connected")
         self._writer.write((command + "\n").encode())
         await self._writer.drain()
-        response = await self._response_queue.get()
+        try:
+            response = await asyncio.wait_for(
+                self._response_queue.get(), timeout=self._RESPONSE_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"Timeout waiting for response to '{command}' "
+                f"(>{self._RESPONSE_TIMEOUT:.0f}s)"
+            )
         if response.startswith("-ERR"):
             raise RuntimeError(f"TTP error for '{command}': {response}")
         return response

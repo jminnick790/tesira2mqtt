@@ -77,6 +77,10 @@ class MqttBridge:
             logger.debug("MQTT rx %s = %s", topic, payload)
             handler = self._handlers.get(topic)
             if handler:
-                await handler(topic, payload)
+                try:
+                    await handler(topic, payload)
+                except Exception as exc:
+                    # Log and continue — a single bad command must not kill the listener
+                    logger.error("Handler error for topic %s (payload=%r): %s", topic, payload, exc)
             else:
                 logger.debug("No handler for topic %s", topic)

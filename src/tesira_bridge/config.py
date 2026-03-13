@@ -76,15 +76,20 @@ class ZoneConfig(BaseModel):
         return self.mute_channel if self.mute_channel is not None else self.level_channel
 
     @property
-    def effective_subscribe_channel(self) -> int:
-        """Channel index to use for TTP `subscribe` commands.
+    def effective_channel(self) -> int:
+        """Channel index to use for all TTP operations (get, set, subscribe).
 
-        Ganged channel 0 works for `get`/`set` (moves L+R together) but
-        some Tesira firmware versions do not resolve channel 0 for subscribe.
-        Fall back to channel 1 so subscriptions land on the Left channel,
-        which is sufficient for ganged stereo zones.
+        Channel 0 ('ganged') is not valid on this Tesira firmware — the hardware
+        accepts only channels 1..N.  When level_channel is 0 we use channel 1,
+        which is the Left channel of a stereo pair and acts as the representative
+        channel for ganged stereo zones.
         """
         return self.level_channel if self.level_channel != 0 else 1
+
+    # Backward-compat alias used by older code paths
+    @property
+    def effective_subscribe_channel(self) -> int:
+        return self.effective_channel
 
 
 class RoutingSourceEntry(BaseModel):

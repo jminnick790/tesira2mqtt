@@ -240,7 +240,7 @@ class Coordinator:
         except ValueError:
             logger.warning("Invalid level value '%s' for zone %s", payload, zone_id)
             return
-        await self._tesira.send(cmd_set_level(zone.level_instance, zone.level_channel, db))
+        await self._tesira.send(cmd_set_level(zone.level_instance, zone.effective_channel, db))
 
     async def _handle_mute_command(self, topic: str, payload: str) -> None:
         zone_id = topic.split("/")[2]
@@ -249,7 +249,7 @@ class Coordinator:
             logger.warning("Mute command for unknown zone '%s'", zone_id)
             return
         muted = payload.upper() == "ON"
-        await self._tesira.send(cmd_set_mute(zone.effective_mute_instance, zone.effective_mute_channel, muted))
+        await self._tesira.send(cmd_set_mute(zone.effective_mute_instance, zone.effective_channel, muted))
 
     async def _handle_routing_command(self, topic: str, payload: str) -> None:
         routing_id = topic.split("/")[2]
