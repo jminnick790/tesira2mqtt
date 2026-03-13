@@ -105,7 +105,7 @@ class RoutingSourceEntry(BaseModel):
 
 class RoutingConfig(BaseModel):
     id: str
-    name: str
+    name: str = ""   # optional — discovery derives name from zone name + " Source"
     zone_id: str
     matrix_instance: str
     output_channels: list[int]

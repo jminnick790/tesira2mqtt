@@ -92,9 +92,14 @@ def routing_select_discovery(
     source_map = {s.id: s.name for s in cfg.sources}
     options = ["None"] + [source_map.get(e.source_id, e.source_id) for e in route.sources]
 
+    # Derive the entity name from the associated zone name so it stays in sync
+    # with zone renames automatically (e.g. "Kitchen Source").
+    zone = next((z for z in cfg.zones if z.id == route.zone_id), None)
+    entity_name = f"{zone.name} Source" if zone else route.name
+
     payload = {
         "unique_id": unique_id,
-        "name": route.name,
+        "name": entity_name,
         "state_topic": state_topic,
         "command_topic": command_topic,
         "options": options,
