@@ -296,6 +296,57 @@ When moving from a dev machine to a server:
 
 ---
 
+## Development & Releases
+
+### Branching strategy
+
+| Branch / ref | Purpose |
+|---|---|
+| `main` | Stable, always deployable. Merging here triggers a `:latest` image build. |
+| `dev` | Integration branch for work-in-progress. No automatic build. |
+| Feature branches | Short-lived branches off `dev` (e.g. `feat/zone-groups`). Open a PR to `dev` when ready. |
+| `v*` tags | Trigger a versioned release build (e.g. `v1.2.0` → image tagged `:1.2.0`, `:1.2`, and `:latest`). |
+
+### Releasing a new version
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+GitHub Actions will build and push the image automatically. The published image is available at:
+
+```
+ghcr.io/jminnick790/tesira-bridge:latest
+ghcr.io/jminnick790/tesira-bridge:1.2.0
+```
+
+### Pulling the pre-built image (Portainer / Docker)
+
+Instead of building locally, you can pull directly from the registry. Update `docker-compose.yml` to reference the published image:
+
+```yaml
+services:
+  tesira-bridge:
+    image: ghcr.io/jminnick790/tesira-bridge:latest
+    container_name: tesira-bridge
+    restart: unless-stopped
+    volumes:
+      - ./config:/config:ro
+    environment:
+      - CONFIG_PATH=/config/config.yaml
+      - LOG_LEVEL
+      - TESIRA_HOST
+      - MQTT_HOST
+      - MQTT_USERNAME
+      - MQTT_PASSWORD
+    network_mode: host
+```
+
+Then in Portainer, deploy this stack and it will pull the image from ghcr.io automatically. No local build required. Watchtower will keep it updated if you include the `watchtower` label.
+
+---
+
 ## License
 
 MIT
