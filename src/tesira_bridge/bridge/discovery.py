@@ -87,9 +87,10 @@ def routing_select_discovery(
     state_topic = f"tesira/routing/{route.id}/state"
     command_topic = f"tesira/routing/{route.id}/set"
 
-    # Resolve human-readable source names from config
+    # Resolve human-readable source names from config; prepend "None" so it
+    # is always available as the first option and as the undetermined state.
     source_map = {s.id: s.name for s in cfg.sources}
-    options = [source_map.get(e.source_id, e.source_id) for e in route.sources]
+    options = ["None"] + [source_map.get(e.source_id, e.source_id) for e in route.sources]
 
     payload = {
         "unique_id": unique_id,

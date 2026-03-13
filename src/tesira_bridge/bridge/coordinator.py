@@ -18,9 +18,9 @@ from ..tesira.models import RoutingState, ZoneState
 from ..tesira.protocol import (
     ErrorResponse,
     ValueResponse,
-    cmd_get_crosspoint_level,
+    cmd_get_crosspoint_state,
     cmd_get_level,
-    cmd_set_crosspoint_level,
+    cmd_set_crosspoint_state,
     cmd_set_level,
     cmd_set_mute,
     cmd_subscribe_level,
@@ -175,38 +175,26 @@ class Coordinator:
                 name = self._source_id_to_name.get(active_id, active_id)
                 logger.info("Route '%s': active source is '%s'", route.id, name)
             else:
-                name = "Unknown"
-                logger.info("Route '%s': active source could not be determined", route.id)
+                name = "None"
+                logger.info("Route '%s': no single active source — publishing 'None'", route.id)
             await self._mqtt.publish(f"tesira/routing/{route.id}/state", name)
 
-    # Crosspoint level threshold: crosspoints above this dB value are considered
-    # "active/on". Matrix Mixer crosspoints are set to 0.0 dB when on and
-    # -100.0 dB when off; -60 dB gives plenty of headroom for both states.
-    _CROSSPOINT_ON_THRESHOLD_DB = -60.0
-    _CROSSPOINT_ON_DB = 0.0
-    _CROSSPOINT_OFF_DB = -100.0
-
     async def _detect_active_source(self, route: RoutingConfig) -> str | None:
-        """Return the source_id whose crosspoints are all active (≥ threshold dB), or None.
+        """Return the source_id whose crosspoints are all enabled, or None.
 
-        Matrix Mixer crosspoints are level-based (not mute-based): 0 dB = on,
-        -100 dB = off.  Any level above _CROSSPOINT_ON_THRESHOLD_DB counts as on.
+        Uses crosspointLevelState (bool) — the enable/disable toggle that exists
+        independently of the crosspoint's dB level setting.
         """
         active_ids: list[str] = []
         for entry in route.sources:
             all_on = True
             for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
                 raw = await self._tesira.send(
-                    cmd_get_crosspoint_level(route.matrix_instance, in_ch, out_ch)
+                    cmd_get_crosspoint_state(route.matrix_instance, in_ch, out_ch)
                 )
                 resp = parse_response(raw)
                 if isinstance(resp, ValueResponse):
-                    try:
-                        db = parse_float(resp.value)
-                        if db < self._CROSSPOINT_ON_THRESHOLD_DB:
-                            all_on = False
-                            break
-                    except ValueError:
+                    if not parse_bool(resp.value):
                         all_on = False
                         break
                 else:
@@ -269,11 +257,27 @@ class Coordinator:
         if not route:
             logger.warning("Routing command for unknown route '%s'", routing_id)
             return
+
+        if payload == "None":
+            await self._disable_all_crosspoints(route)
+            return
+
         source_id = self._source_name_to_id.get(payload)
         if not source_id:
             logger.warning("Unknown source name '%s' for route %s", payload, routing_id)
             return
         await self._switch_source(route, source_id)
+
+    async def _disable_all_crosspoints(self, route: RoutingConfig) -> None:
+        """Disable every crosspoint for this route — equivalent to selecting 'None'."""
+        for entry in route.sources:
+            for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
+                await self._tesira.send(
+                    cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
+                )
+        self._routing_states[route.id].active_source_id = None
+        await self._mqtt.publish(f"tesira/routing/{route.id}/state", "None")
+        logger.info("Route '%s' set to None (all crosspoints disabled)", route.id)
 
     async def _switch_source(self, route: RoutingConfig, target_source_id: str) -> None:
         """Mute all crosspoints for this route's outputs, then unmute the target source."""
@@ -284,21 +288,17 @@ class Coordinator:
             logger.warning("Source '%s' not in route '%s'", target_source_id, route.id)
             return
 
-        # Disable all input → output crosspoints for this route
+        # Disable all crosspoints for this route's outputs
         for entry in route.sources:
             for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
                 await self._tesira.send(
-                    cmd_set_crosspoint_level(
-                        route.matrix_instance, in_ch, out_ch, self._CROSSPOINT_OFF_DB
-                    )
+                    cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
                 )
 
-        # Enable only the target source's crosspoints at unity gain
+        # Enable only the target source's crosspoints
         for in_ch, out_ch in zip(target_entry.input_channels, route.output_channels):
             await self._tesira.send(
-                cmd_set_crosspoint_level(
-                    route.matrix_instance, in_ch, out_ch, self._CROSSPOINT_ON_DB
-                )
+                cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, True)
             )
 
         self._routing_states[route.id].active_source_id = target_source_id
