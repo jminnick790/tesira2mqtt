@@ -1,4 +1,4 @@
-# tesira-bridge
+# tesira2mqtt
 
 A standalone Docker microservice that bridges a **Biamp Tesira Server I/O** audio system to **Home Assistant** via MQTT. It communicates with the Tesira using the native Tesira Text Protocol (TTP) over Telnet and exposes each zone as a set of HA entities through MQTT Auto-Discovery — no custom component or HACS installation required.
 
@@ -23,7 +23,7 @@ Tesira Server I/O
       │  TCP port 23
       │  Tesira Text Protocol (TTP)
       ▼
- tesira-bridge (Docker)
+ tesira2mqtt (Docker)
       │  MQTT
       ▼
  Mosquitto broker
@@ -94,8 +94,8 @@ Source routing requires a **Matrix Mixer** block. The bridge enables and disable
 ### 1. Clone the repository
 
 ```bash
-git clone git@github.com:jminnick790/tesira-bridge.git
-cd tesira-bridge
+git clone git@github.com:jminnick790/tesira2mqtt.git
+cd tesira2mqtt
 ```
 
 ### 2. Create your `.env` file
@@ -317,8 +317,8 @@ git push origin v1.2.0
 GitHub Actions will build and push the image automatically. The published image is available at:
 
 ```
-ghcr.io/jminnick790/tesira-bridge:latest
-ghcr.io/jminnick790/tesira-bridge:1.2.0
+ghcr.io/jminnick790/tesira2mqtt:latest
+ghcr.io/jminnick790/tesira2mqtt:1.2.0
 ```
 
 ### Pulling the pre-built image (Portainer / Docker)
@@ -327,9 +327,9 @@ Instead of building locally, you can pull directly from the registry. Update `do
 
 ```yaml
 services:
-  tesira-bridge:
-    image: ghcr.io/jminnick790/tesira-bridge:latest
-    container_name: tesira-bridge
+  tesira2mqtt:
+    image: ghcr.io/jminnick790/tesira2mqtt:latest
+    container_name: tesira2mqtt
     restart: unless-stopped
     volumes:
       - ./config:/config:ro

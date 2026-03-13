@@ -1,8 +1,8 @@
 services:
-  tesira-bridge:
+  tesira2mqtt:
     build: .
-    image: tesira-bridge:latest
-    container_name: tesira-bridge
+    image: tesira2mqtt:latest
+    container_name: tesira2mqtt
     restart: unless-stopped
     volumes:
       - ./config:/config:ro        # config.yaml lives here (read-only inside container)

@@ -1,7 +1,7 @@
 """Unit tests for TTP command builders and response/notification parsers."""
 
 import pytest
-from tesira_bridge.tesira.protocol import (
+from tesira2mqtt.tesira.protocol import (
     OkResponse,
     ValueResponse,
     ErrorResponse,

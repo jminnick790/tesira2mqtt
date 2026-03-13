@@ -1,4 +1,4 @@
-"""Configuration models and loader for tesira-bridge.
+"""Configuration models and loader for tesira2mqtt.
 
 Environment variables override the corresponding config.yaml values:
 

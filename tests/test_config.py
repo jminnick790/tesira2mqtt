@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from tesira_bridge.config import BridgeConfig
+from tesira2mqtt.config import BridgeConfig
 
 
 MINIMAL_VALID = {

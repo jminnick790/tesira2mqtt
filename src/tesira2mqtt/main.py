@@ -1,4 +1,4 @@
-"""tesira-bridge entry point."""
+"""tesira2mqtt entry point."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def main() -> None:
         stream=sys.stdout,
     )
 
-    logger.info("tesira-bridge starting")
+    logger.info("tesira2mqtt starting")
     try:
         asyncio.run(run())
     except KeyboardInterrupt:

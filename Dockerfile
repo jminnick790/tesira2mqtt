@@ -17,6 +17,6 @@ USER bridge
 ENV CONFIG_PATH=/config/config.yaml
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD python -c "import tesira_bridge" || exit 1
+    CMD python -c "import tesira2mqtt" || exit 1
 
-ENTRYPOINT ["python", "-m", "tesira_bridge.main"]
+ENTRYPOINT ["python", "-m", "tesira2mqtt.main"]
