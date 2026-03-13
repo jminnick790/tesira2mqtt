@@ -300,8 +300,12 @@ class TesiraClient:
 
                 if line.startswith("!"):
                     await self._dispatch_notification(line)
-                else:
+                elif line.startswith(("+", "-")):
                     await self._response_queue.put(line)
+                else:
+                    # Echoed command or unsolicited banner text — discard.
+                    # All legitimate TTP responses begin with '+' or '-'.
+                    logger.debug("Discarding non-response line: %s", line)
         except asyncio.CancelledError:
             raise
         except Exception as exc:

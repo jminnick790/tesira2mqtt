@@ -85,9 +85,19 @@ class Coordinator:
         await self._tesira.send(
             cmd_subscribe_level(zone.level_instance, zone.level_channel, level_token, rate)
         )
-        await self._tesira.send(
-            cmd_subscribe_mute(zone.effective_mute_instance, zone.effective_mute_channel, mute_token, rate)
-        )
+        try:
+            await self._tesira.send(
+                cmd_subscribe_mute(
+                    zone.effective_mute_instance, zone.effective_mute_channel, mute_token, rate
+                )
+            )
+        except RuntimeError as exc:
+            # Some block types don't expose a subscribable 'mute' attribute.
+            # Log a warning but don't abort — level and routing still work.
+            logger.warning(
+                "Mute subscription failed for zone %s (%s); mute feedback disabled for this zone: %s",
+                zone.id, zone.effective_mute_instance, exc,
+            )
         logger.debug("Subscribed to zone %s", zone.id)
 
     async def _register_mqtt_handlers(self) -> None:
