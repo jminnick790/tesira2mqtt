@@ -194,7 +194,7 @@ zones:
     level_instance: "level_z1"
     level_channel: 0          # 0 = use ch1 (Left) as representative for stereo
     min_db: -100.0
-    max_db: 12.0
+    max_db: 0.0
 ```
 
 | Field | Description |
@@ -203,7 +203,7 @@ zones:
 | `name` | Human-readable name — drives HA entity names (e.g. "Kitchen Volume", "Kitchen Mute", "Kitchen Source") |
 | `level_instance` | Instance tag of the Tesira Level block |
 | `level_channel` | Channel to control. Use `0` for ganged stereo (bridge maps this to ch1 internally) |
-| `min_db` / `max_db` | dB range for the HA volume slider |
+| `min_db` / `max_db` | Fallback dB range for the HA volume slider. On startup the bridge queries the hardware and overrides these values automatically — set them conservatively (e.g. `-100.0` / `0.0`) in case the query fails |
 | `mute_instance` | Optional — only needed if mute is on a separate block from the Level block |
 
 ### `routing`
