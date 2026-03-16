@@ -225,7 +225,7 @@ routing:
         input_channels: [15, 16]
 ```
 
-The source selector in HA will always include a **None** option at the top, which disables all crosspoints for that zone.
+The source selector in HA will always include an **Off** option at the top, which disables all crosspoints for that zone.
 
 ---
 
@@ -261,8 +261,8 @@ The bridge uses the following topic structure:
 | `tesira/zone/{id}/level/set` | HA → bridge | Set level in dB |
 | `tesira/zone/{id}/mute/state` | bridge → HA | `ON` or `OFF` |
 | `tesira/zone/{id}/mute/set` | HA → bridge | `ON` or `OFF` |
-| `tesira/routing/{id}/state` | bridge → HA | Active source name or `None` (retained) |
-| `tesira/routing/{id}/set` | HA → bridge | Source name or `None` |
+| `tesira/routing/{id}/state` | bridge → HA | Active source name or `Off` (retained) |
+| `tesira/routing/{id}/set` | HA → bridge | Source name or `Off` |
 
 ---
 
