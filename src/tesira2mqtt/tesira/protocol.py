@@ -85,6 +85,14 @@ def cmd_get_level(instance: str, channel: int) -> str:
     return f"{instance} get level {channel}"
 
 
+def cmd_get_min_level(instance: str, channel: int) -> str:
+    return f"{instance} get minLevel {channel}"
+
+
+def cmd_get_max_level(instance: str, channel: int) -> str:
+    return f"{instance} get maxLevel {channel}"
+
+
 def cmd_set_level(instance: str, channel: int, db: float) -> str:
     return f"{instance} set level {channel} {db:.4f}"
 

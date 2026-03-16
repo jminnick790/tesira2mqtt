@@ -20,6 +20,8 @@ from ..tesira.protocol import (
     ValueResponse,
     cmd_get_crosspoint_state,
     cmd_get_level,
+    cmd_get_min_level,
+    cmd_get_max_level,
     cmd_set_crosspoint_state,
     cmd_set_level,
     cmd_set_mute,
@@ -29,6 +31,7 @@ from ..tesira.protocol import (
     parse_float,
     parse_response,
 )
+from .discovery import zone_level_discovery
 from .mqtt import MqttBridge
 
 logger = logging.getLogger(__name__)
@@ -114,6 +117,40 @@ class Coordinator:
                 zone.id, zone.level_instance, exc,
             )
             return
+
+        # ── Hardware min/max query ────────────────────────────────────────────
+        # Query the actual dB range from the Tesira block and update the zone
+        # config in memory. This overrides the config.yaml values so the HA
+        # slider always reflects what the hardware will actually accept.
+        # Failures are non-fatal — config values remain as fallback.
+        try:
+            min_raw = await self._tesira.send(cmd_get_min_level(zone.level_instance, sub_ch))
+            max_raw = await self._tesira.send(cmd_get_max_level(zone.level_instance, sub_ch))
+            min_resp = parse_response(min_raw)
+            max_resp = parse_response(max_raw)
+            if isinstance(min_resp, ValueResponse) and isinstance(max_resp, ValueResponse):
+                zone.min_db = parse_float(min_resp.value)
+                zone.max_db = parse_float(max_resp.value)
+                logger.info(
+                    "Zone %s: hardware range %.1f dB to %.1f dB",
+                    zone.id, zone.min_db, zone.max_db,
+                )
+                # Re-publish discovery with the corrected range
+                topic, payload = zone_level_discovery(self._cfg, zone)
+                await self._mqtt.publish_retained(topic, payload)
+            else:
+                logger.warning(
+                    "Zone %s: could not read hardware range (%s, %s) — "
+                    "using config values (%.1f to %.1f dB)",
+                    zone.id, min_raw.strip(), max_raw.strip(),
+                    zone.min_db, zone.max_db,
+                )
+        except RuntimeError as exc:
+            logger.warning(
+                "Zone %s: hardware range query failed — "
+                "using config values (%.1f to %.1f dB): %s",
+                zone.id, zone.min_db, zone.max_db, exc,
+            )
 
         # ── Level subscription ────────────────────────────────────────────────
         try:
