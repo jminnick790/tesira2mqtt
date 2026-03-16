@@ -169,14 +169,21 @@ class Coordinator:
         are fully unmuted the state is published as 'Unknown'.
         """
         for route in self._cfg.routing:
-            active_id = await self._detect_active_source(route)
+            try:
+                active_id = await self._detect_active_source(route)
+            except Exception as exc:
+                logger.error(
+                    "Route '%s': detection failed unexpectedly, publishing 'Off': %s",
+                    route.id, exc,
+                )
+                active_id = None
             self._routing_states[route.id].active_source_id = active_id
             if active_id:
                 name = self._source_id_to_name.get(active_id, active_id)
                 logger.info("Route '%s': active source is '%s'", route.id, name)
             else:
-                name = "None"
-                logger.info("Route '%s': no single active source — publishing 'None'", route.id)
+                name = "Off"
+                logger.info("Route '%s': no single active source — publishing 'Off'", route.id)
             await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", name)
 
     async def _detect_active_source(self, route: RoutingConfig) -> str | None:
@@ -184,20 +191,31 @@ class Coordinator:
 
         Uses crosspointLevelState (bool) — the enable/disable toggle that exists
         independently of the crosspoint's dB level setting.
+
+        TTP errors on individual crosspoints are treated as 'off' so that a
+        single unresponsive crosspoint doesn't prevent state from being published.
         """
         active_ids: list[str] = []
         for entry in route.sources:
             all_on = True
             for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
-                raw = await self._tesira.send(
-                    cmd_get_crosspoint_state(route.matrix_instance, in_ch, out_ch)
-                )
-                resp = parse_response(raw)
-                if isinstance(resp, ValueResponse):
-                    if not parse_bool(resp.value):
+                try:
+                    raw = await self._tesira.send(
+                        cmd_get_crosspoint_state(route.matrix_instance, in_ch, out_ch)
+                    )
+                    resp = parse_response(raw)
+                    if isinstance(resp, ValueResponse):
+                        if not parse_bool(resp.value):
+                            all_on = False
+                            break
+                    else:
                         all_on = False
                         break
-                else:
+                except RuntimeError as exc:
+                    logger.warning(
+                        "Route '%s': failed to query crosspoint %d→%d: %s",
+                        route.id, in_ch, out_ch, exc,
+                    )
                     all_on = False
                     break
             if all_on:
@@ -258,7 +276,7 @@ class Coordinator:
             logger.warning("Routing command for unknown route '%s'", routing_id)
             return
 
-        if payload == "None":
+        if payload == "Off":
             await self._disable_all_crosspoints(route)
             return
 
@@ -286,8 +304,8 @@ class Coordinator:
                         route.id, in_ch, out_ch, exc,
                     )
         self._routing_states[route.id].active_source_id = None
-        await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", "None")
-        logger.info("Route '%s' set to None (all crosspoints disabled)", route.id)
+        await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", "Off")
+        logger.info("Route '%s' set to Off (all crosspoints disabled)", route.id)
 
     async def _switch_source(self, route: RoutingConfig, target_source_id: str) -> None:
         """Mute all crosspoints for this route's outputs, then unmute the target source."""

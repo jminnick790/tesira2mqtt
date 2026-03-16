@@ -87,10 +87,12 @@ def routing_select_discovery(
     state_topic = f"tesira/routing/{route.id}/state"
     command_topic = f"tesira/routing/{route.id}/set"
 
-    # Resolve human-readable source names from config; prepend "None" so it
+    # Resolve human-readable source names from config; prepend "Off" so it
     # is always available as the first option and as the undetermined state.
+    # "None" is avoided as it is Python's null keyword and can be misinterpreted
+    # by HA's YAML/MQTT pipeline, causing the entity to show as "unknown".
     source_map = {s.id: s.name for s in cfg.sources}
-    options = ["None"] + [source_map.get(e.source_id, e.source_id) for e in route.sources]
+    options = ["Off"] + [source_map.get(e.source_id, e.source_id) for e in route.sources]
 
     # Derive the entity name from the associated zone name so it stays in sync
     # with zone renames automatically (e.g. "Kitchen Source").
