@@ -33,6 +33,7 @@ from ..tesira.protocol import (
 )
 from .discovery import zone_level_discovery
 from .mqtt import MqttBridge
+from ..utils import db_to_position, position_to_db
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +273,12 @@ class Coordinator:
             logger.warning("Could not parse level value '%s' for zone %s", value, zone_id)
             return
         self._zone_states[zone_id].level_db = db
-        await self._mqtt.publish(f"tesira/zone/{zone_id}/level/state", f"{db:.1f}")
+        zone = next((z for z in self._cfg.zones if z.id == zone_id), None)
+        if zone:
+            position = db_to_position(db, zone.min_db, zone.max_db)
+            await self._mqtt.publish(f"tesira/zone/{zone_id}/level/state", f"{position:.1f}")
+        else:
+            logger.warning("Level notification for unknown zone '%s'", zone_id)
 
     async def _on_mute_notification(self, token: str, value: str) -> None:
         zone_id = token.removesuffix("_mute")
@@ -292,10 +298,11 @@ class Coordinator:
             logger.warning("Level command for unknown zone '%s'", zone_id)
             return
         try:
-            db = float(payload)
+            position = float(payload)
         except ValueError:
             logger.warning("Invalid level value '%s' for zone %s", payload, zone_id)
             return
+        db = position_to_db(position, zone.min_db, zone.max_db)
         await self._tesira.send(cmd_set_level(zone.level_instance, zone.effective_channel, db))
 
     async def _handle_mute_command(self, topic: str, payload: str) -> None:
