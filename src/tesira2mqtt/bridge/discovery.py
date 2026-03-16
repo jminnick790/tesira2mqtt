@@ -38,14 +38,14 @@ def zone_level_discovery(cfg: BridgeConfig, zone: ZoneConfig) -> tuple[str, str]
         "name": f"{zone.name} Volume",
         "state_topic": state_topic,
         "command_topic": command_topic,
-        "min": zone.min_db,
-        "max": zone.max_db,
-        "step": 0.5,
-        "unit_of_measurement": "dB",
+        "min": 0,
+        "max": 100,
+        "step": 1,
         "device": _device_payload(cfg),
         "availability_topic": "tesira/bridge/status",
         "payload_available": "online",
         "payload_not_available": "offline",
+        "icon": "mdi:volume-high",
     }
     topic = f"{_base_topic(cfg, 'number', unique_id)}/config"
     return topic, json.dumps(payload)
