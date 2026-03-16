@@ -278,8 +278,9 @@ class Coordinator:
         zone_id = token.removesuffix("_mute")
         muted = parse_bool(value)
         self._zone_states[zone_id].muted = muted
+        # Publish zone power state — ON means audio is playing (mute=false)
         await self._mqtt.publish(
-            f"tesira/zone/{zone_id}/mute/state", "ON" if muted else "OFF"
+            f"tesira/zone/{zone_id}/mute/state", "OFF" if muted else "ON"
         )
 
     # ── MQTT → TTP handlers ───────────────────────────────────────────────────
@@ -303,7 +304,7 @@ class Coordinator:
         if not zone:
             logger.warning("Mute command for unknown zone '%s'", zone_id)
             return
-        muted = payload.upper() == "ON"
+        muted = payload.upper() == "OFF"   # zone OFF = muted, zone ON = playing
         await self._tesira.send(cmd_set_mute(zone.effective_mute_instance, zone.effective_channel, muted))
 
     async def _handle_routing_command(self, topic: str, payload: str) -> None:

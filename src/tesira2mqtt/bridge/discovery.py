@@ -59,7 +59,7 @@ def zone_mute_discovery(cfg: BridgeConfig, zone: ZoneConfig) -> tuple[str, str]:
 
     payload = {
         "unique_id": unique_id,
-        "name": f"{zone.name} Mute",
+        "name": zone.name,          # "Kitchen" ON/OFF is more intuitive than "Kitchen Mute"
         "state_topic": state_topic,
         "command_topic": command_topic,
         "payload_on": "ON",
@@ -70,7 +70,7 @@ def zone_mute_discovery(cfg: BridgeConfig, zone: ZoneConfig) -> tuple[str, str]:
         "availability_topic": "tesira/bridge/status",
         "payload_available": "online",
         "payload_not_available": "offline",
-        "icon": "mdi:volume-mute",
+        "icon": "mdi:speaker",
     }
     topic = f"{_base_topic(cfg, 'switch', unique_id)}/config"
     return topic, json.dumps(payload)
