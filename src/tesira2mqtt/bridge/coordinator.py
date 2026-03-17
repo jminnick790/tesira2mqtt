@@ -276,7 +276,7 @@ class Coordinator:
         zone = next((z for z in self._cfg.zones if z.id == zone_id), None)
         if zone:
             position = db_to_position(db, zone.min_db, zone.max_db)
-            await self._mqtt.publish(f"tesira/zone/{zone_id}/level/state", f"{position:.1f}")
+            await self._mqtt.publish_retained(f"tesira/zone/{zone_id}/level/state", f"{position:.1f}")
         else:
             logger.warning("Level notification for unknown zone '%s'", zone_id)
 
@@ -285,7 +285,7 @@ class Coordinator:
         muted = parse_bool(value)
         self._zone_states[zone_id].muted = muted
         # Publish zone power state — ON means audio is playing (mute=false)
-        await self._mqtt.publish(
+        await self._mqtt.publish_retained(
             f"tesira/zone/{zone_id}/mute/state", "OFF" if muted else "ON"
         )
 
