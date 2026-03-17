@@ -92,17 +92,13 @@ class TesiraClient:
             try:
                 await self.connect()
                 backoff = self.reconnect_interval_s  # reset on successful connect
-                logger.debug("run_forever: awaiting recv_task")
                 await self._recv_task  # blocks until disconnect
-                logger.debug("run_forever: recv_task finished normally")
             except (OSError, asyncio.IncompleteReadError) as exc:
                 logger.warning("Tesira connection lost: %s — retrying in %.0fs", exc, backoff)
             except Exception as exc:
                 logger.error("Unexpected error: %s — retrying in %.0fs", exc, backoff)
             finally:
-                logger.debug("run_forever: entering _close_connection")
                 await self._close_connection()
-                logger.debug("run_forever: _close_connection done")
             if not self._running:
                 break
             logger.info("Tesira disconnected — reconnecting in %.0fs", backoff)
@@ -117,21 +113,17 @@ class TesiraClient:
         """
         self.connected = False
         if self._recv_task:
-            logger.debug("_close_connection: cancelling recv_task (done=%s)", self._recv_task.done())
             self._recv_task.cancel()
             try:
                 await self._recv_task
             except (asyncio.CancelledError, Exception):
                 pass
-            logger.debug("_close_connection: recv_task awaited")
         if self._writer:
-            logger.debug("_close_connection: closing writer")
             self._writer.close()
             try:
                 await asyncio.wait_for(self._writer.wait_closed(), timeout=5.0)
             except Exception:
                 pass
-            logger.debug("_close_connection: writer closed")
         self._reader = None
         self._writer = None
         self._recv_task = None
