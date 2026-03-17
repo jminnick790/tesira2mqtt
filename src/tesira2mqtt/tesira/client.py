@@ -80,21 +80,9 @@ class TesiraClient:
             await hook()
 
     async def disconnect(self) -> None:
-        """Gracefully close the connection."""
-        self.connected = False
+        """Gracefully close the connection and stop run_forever."""
         self._running = False
-        if self._recv_task:
-            self._recv_task.cancel()
-            try:
-                await self._recv_task
-            except asyncio.CancelledError:
-                pass
-        if self._writer:
-            self._writer.close()
-            try:
-                await self._writer.wait_closed()
-            except Exception:
-                pass
+        await self._close_connection()
 
     async def run_forever(self) -> None:
         """Connect and reconnect indefinitely. Call this as a long-running task."""
@@ -110,9 +98,35 @@ class TesiraClient:
             except Exception as exc:
                 logger.error("Unexpected error: %s — retrying in %.0fs", exc, backoff)
             finally:
-                await self.disconnect()
+                await self._close_connection()
+            if not self._running:
+                break
+            logger.info("Tesira disconnected — reconnecting in %.0fs", backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60.0)  # exponential backoff, cap at 60s
+
+    async def _close_connection(self) -> None:
+        """Tear down the current socket and recv task without touching _running.
+
+        Called by run_forever() after each connection attempt (so reconnect
+        can loop) and by disconnect() when a full shutdown is requested.
+        """
+        self.connected = False
+        if self._recv_task:
+            self._recv_task.cancel()
+            try:
+                await self._recv_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self._writer:
+            self._writer.close()
+            try:
+                await asyncio.wait_for(self._writer.wait_closed(), timeout=5.0)
+            except Exception:
+                pass
+        self._reader = None
+        self._writer = None
+        self._recv_task = None
 
     async def __aenter__(self) -> "TesiraClient":
         await self.connect()
