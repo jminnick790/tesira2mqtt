@@ -96,6 +96,11 @@ class ZoneConfig(BaseModel):
 class RoutingSourceEntry(BaseModel):
     source_id: str
     input_channels: list[int]
+    mono: bool = False
+    """When True, this source has a single channel that should be fanned out
+    to all zone output channels. The channel length validator is relaxed for
+    mono entries — input_channels may contain fewer elements than output_channels.
+    """
 
     @model_validator(mode="after")
     def channels_must_be_nonempty(self) -> "RoutingSourceEntry":
@@ -116,6 +121,8 @@ class RoutingConfig(BaseModel):
     def channel_lengths_must_match(self) -> "RoutingConfig":
         n = len(self.output_channels)
         for entry in self.sources:
+            if entry.mono:
+                continue   # mono sources fan to all outputs — length mismatch is expected
             if len(entry.input_channels) != n:
                 raise ValueError(
                     f"source '{entry.source_id}' has {len(entry.input_channels)} "

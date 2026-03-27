@@ -231,11 +231,14 @@ class Coordinator:
         """Return (input_ch, output_ch) pairs for the given route entry.
 
         Stereo (default): zip(input_channels, output_channels) — L→L, R→R.
-        Mono: cartesian product — every input feeds every output, so both
-        speakers receive the full mix regardless of listener position.
+        Cartesian product is used when either:
+          - entry.mono is True: the source is single-channel and should fan out
+            to all zone outputs regardless of zone config.
+          - zone.mono is True: the zone speakers are deployed for coverage rather
+            than imaging; all inputs should feed all outputs.
         """
         zone = next((z for z in self._cfg.zones if z.id == route.zone_id), None)
-        if zone and zone.mono:
+        if entry.mono or (zone and zone.mono):
             return list(itertools_product(entry.input_channels, route.output_channels))
         return list(zip(entry.input_channels, route.output_channels))
 

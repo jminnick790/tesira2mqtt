@@ -26,6 +26,8 @@ mqtt:
 #   Sonos Port  — ch 1 (L), 2 (R)
 #   FPP         — ch 3 (L), 4 (R)
 #   Dry Lines   — ch 15 (L), 16 (R)
+#   Tone        — ch 31 (single channel, mono: true in routing entries)
+#   White Noise — ch 32 (single channel, mono: true in routing entries)
 #   (ch 5–14 reserved / unassigned in current design)
 sources:
   - id: sonos_port
@@ -34,6 +36,10 @@ sources:
     name: "FPP"
   - id: dry_lines_in
     name: "Dry Lines"
+  - id: tone
+    name: "Tone"
+  - id: noise
+    name: "White Noise"
 
 # ── ZONES ────────────────────────────────────────────────────────────────────
 # Level instances: level_z1 – level_z10 (2-channel ganged blocks)
@@ -128,6 +134,10 @@ zones:
 # Matrix instance: "matrix"
 # Output channels: zone N = [2N-1, 2N]  (e.g. zone_01=[1,2], zone_02=[3,4])
 # Input channels:  Sonos Port=[1,2]  FPP=[3,4]  Dry Lines=[15,16]
+#                  Tone=[31]  White Noise=[32]  (single-channel — use mono: true)
+#
+# mono: true on a source entry fans a single input channel to all zone outputs.
+# This is distinct from zone-level mono (which applies to all sources in the zone).
 routing:
   - id: zone_01_source
     name: "Zone 01 Source"
@@ -141,6 +151,12 @@ routing:
         input_channels: [3, 4]
       - source_id: dry_lines_in
         input_channels: [15, 16]
+      - source_id: tone
+        input_channels: [31]
+        mono: true             # single-channel — fans to both outputs
+      - source_id: noise
+        input_channels: [32]
+        mono: true
 
   - id: zone_02_source
     name: "Zone 02 Source"
