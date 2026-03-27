@@ -57,6 +57,7 @@ class ZoneConfig(BaseModel):
     id: str
     name: str
     stereo: bool = True
+    mono: bool = False
     level_instance: str
     level_channel: int = 0
     # mute_instance is optional — defaults to level_instance when not set.
