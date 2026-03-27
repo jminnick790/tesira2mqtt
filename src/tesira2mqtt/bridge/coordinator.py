@@ -11,6 +11,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
+from itertools import product as itertools_product
 
 from ..config import BridgeConfig, RoutingConfig, ZoneConfig
 from ..tesira.client import TesiraClient
@@ -224,6 +225,20 @@ class Coordinator:
                 logger.info("Route '%s': no single active source — publishing 'Off'", route.id)
             await self._mqtt.publish_retained(f"tesira/routing/{route.id}/state", name)
 
+    def _crosspoint_pairs(
+        self, route: RoutingConfig, entry: "RoutingSourceEntry"
+    ) -> list[tuple[int, int]]:
+        """Return (input_ch, output_ch) pairs for the given route entry.
+
+        Stereo (default): zip(input_channels, output_channels) — L→L, R→R.
+        Mono: cartesian product — every input feeds every output, so both
+        speakers receive the full mix regardless of listener position.
+        """
+        zone = next((z for z in self._cfg.zones if z.id == route.zone_id), None)
+        if zone and zone.mono:
+            return list(itertools_product(entry.input_channels, route.output_channels))
+        return list(zip(entry.input_channels, route.output_channels))
+
     async def _detect_active_source(self, route: RoutingConfig) -> str | None:
         """Return the source_id whose crosspoints are all enabled, or None.
 
@@ -236,7 +251,7 @@ class Coordinator:
         active_ids: list[str] = []
         for entry in route.sources:
             all_on = True
-            for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
+            for in_ch, out_ch in self._crosspoint_pairs(route, entry):
                 try:
                     raw = await self._tesira.send(
                         cmd_get_crosspoint_state(route.matrix_instance, in_ch, out_ch)
@@ -338,7 +353,7 @@ class Coordinator:
         function — the state is always published so HA reflects the intent.
         """
         for entry in route.sources:
-            for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
+            for in_ch, out_ch in self._crosspoint_pairs(route, entry):
                 try:
                     await self._tesira.send(
                         cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
@@ -363,7 +378,7 @@ class Coordinator:
 
         # Disable all crosspoints for this route's outputs
         for entry in route.sources:
-            for in_ch, out_ch in zip(entry.input_channels, route.output_channels):
+            for in_ch, out_ch in self._crosspoint_pairs(route, entry):
                 try:
                     await self._tesira.send(
                         cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, False)
@@ -375,7 +390,7 @@ class Coordinator:
                     )
 
         # Enable only the target source's crosspoints
-        for in_ch, out_ch in zip(target_entry.input_channels, route.output_channels):
+        for in_ch, out_ch in self._crosspoint_pairs(route, target_entry):
             try:
                 await self._tesira.send(
                     cmd_set_crosspoint_state(route.matrix_instance, in_ch, out_ch, True)

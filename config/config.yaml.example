@@ -44,6 +44,9 @@ zones:
   - id: zone_01
     name: "Zone 01"              # TODO: rename (e.g. "Living Room")
     stereo: true
+    # mono: true                 # Routes both L+R source channels to both outputs.
+    #                            # Use for ambient spaces (porch, garage) where
+    #                            # stereo imaging is not meaningful.
     level_instance: "level_z1"
     level_channel: 0
     min_db: -100.0
