@@ -17,7 +17,7 @@ def db_to_position(db: float, min_db: float, max_db: float) -> float:
         return 0.0
     ratio = (db - min_db) / (max_db - min_db)
     ratio = max(0.0, min(1.0, ratio))
-    return round(math.sqrt(ratio) * 100, 1)
+    return round(ratio * 100, 1)
 
 
 def position_to_db(position: float, min_db: float, max_db: float) -> float:
@@ -28,5 +28,5 @@ def position_to_db(position: float, min_db: float, max_db: float) -> float:
     if max_db <= min_db:
         return min_db
     ratio = max(0.0, min(100.0, position)) / 100
-    db = min_db + (ratio ** 2) * (max_db - min_db)
+    db = min_db + ratio * (max_db - min_db)
     return round(db, 4)
